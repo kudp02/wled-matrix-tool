@@ -21,6 +21,8 @@ export function useWledDraw() {
   const cellSize = ref(10); // Size of each pixel cell in the drawing grid
   const gridWidth = ref(14); // Matrix width (in pixels)
   const gridHeight = ref(20); // Matrix height (in pixels)
+  const flipHorizontal = ref(false); // Matrix flipped horizontally
+  const flipVertical = ref(false); // Matrix flipped vertically
   const pixelData = ref<string[]>([]); // Holds color values for each pixel
   const currentColor = ref("#ff2500"); // Currently selected drawing color
   const isInitializing = ref(true);
@@ -186,9 +188,11 @@ export function useWledDraw() {
   function sendToWledImmediate(): void {
     if (ignoreApi.value) return;
 
+    const payload = buildWledPayload()
+
     fetch(apiUrl.value, {
       method: "POST",
-      body: wledJson.value,
+      body: payload,
       headers: {
         "Content-type": "application/json; charset=UTF-8",
       },
@@ -202,6 +206,52 @@ export function useWledDraw() {
         console.error("WLED API Error:", error);
         error.value = true;
       });
+  }
+
+  function buildWledPayload(): string {
+    let data = pixelData.value
+
+    if(flipHorizontal.value){
+        data = flipHorizontalRaw(data, gridWidth.value, gridHeight.value)
+    }
+
+    if(flipVertical.value){
+        data = flipVerticalRaw(data, gridWidth.value, gridHeight.value)
+    }
+
+    const colors = data
+      .map(c => `"${(c || "#000000").replace("#", "")}"`)
+      .join(',')
+
+    return `{
+      "on": true,
+      "bri": 230,
+      "v": true,
+      "seg": { "i": [${colors}] }
+    }`
+  }
+
+  function flipHorizontalRaw(data: string[], width: number, height: number) {
+    const result: string[] = []
+
+    for (let y = 0; y < height; y++) {
+      const rowStart = y * width
+      const row = data.slice(rowStart, rowStart + width).reverse()
+      result.push(...row)
+    }
+
+    return result
+  }
+
+  function flipVerticalRaw(data: string[], width: number, height: number) {
+    const result: string[] = []
+
+    for (let y = height - 1; y >= 0; y--) {
+      const rowStart = y * width
+      result.push(...data.slice(rowStart, rowStart + width))
+    }
+
+    return result
   }
 
   // Enhanced debounced version of sendToWled
@@ -419,6 +469,8 @@ export function useWledDraw() {
     localStorage.colorPalette = colorPalette.value.toString();
     localStorage.gridWidth = gridWidth.value;
     localStorage.gridHeight = gridHeight.value;
+    localStorage.flipHorizontal = flipHorizontal.value;
+    localStorage.flipVertical = flipVertical.value;
     localStorage.debounceDelay = debounceDelay.value;
     // Note: History is saved separately to avoid circular calls
   }
@@ -444,6 +496,14 @@ export function useWledDraw() {
 
     if (localStorage.gridHeight) {
       gridHeight.value = Number(localStorage.gridHeight);
+    }
+
+    if (localStorage.flipHorizontal) {
+      flipHorizontal.value = Boolean(localStorage.flipHorizontal);
+    }
+
+    if (localStorage.flipVertical) {
+      flipVertical.value = Boolean(localStorage.flipVertical);
     }
 
     // Then load the other settings
@@ -545,6 +605,8 @@ export function useWledDraw() {
     cellSize,
     gridWidth,
     gridHeight,
+    flipHorizontal,
+    flipVertical,
     pixelData,
     currentColor,
     colorPalette,

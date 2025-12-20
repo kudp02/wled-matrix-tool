@@ -18,6 +18,8 @@ const {
   cellSize,
   gridWidth,
   gridHeight,
+  flipHorizontal,
+  flipVertical,
   pixelData,
   currentColor,
   colorPalette,
@@ -205,6 +207,8 @@ function handleBrushSizeChange(size: number) {
           v-model:api-url="apiUrl"
           v-model:grid-width="gridWidth"
           v-model:grid-height="gridHeight"
+          v-model:flip-horizontal="flipHorizontal"
+          v-model:flip-vertical="flipVertical"
           v-model:debounce-delay="debounceDelay"
           :wled-json="wledJson"
           class="flex-shrink-0"
