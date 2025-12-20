@@ -16,6 +16,8 @@ interface SettingsProps {
   apiUrl: string;
   gridWidth: number;
   gridHeight: number;
+  flipHorizontal: boolean;
+  flipVertical: boolean;
   debounceDelay: number;
   wledJson: string; // Keep the prop but won't display it anymore
 }
@@ -25,6 +27,8 @@ type SettingsEmits = {
   "update:apiUrl": [value: string];
   "update:gridWidth": [value: number];
   "update:gridHeight": [value: number];
+  "update:flipHorizontal": [value: boolean];
+  "update:flipVertical": [value: boolean];
   "update:debounceDelay": [value: number];
 };
 
@@ -32,6 +36,8 @@ const props = withDefaults(defineProps<SettingsProps>(), {
   apiUrl: "",
   gridWidth: 16,
   gridHeight: 16,
+  flipHorizontal: false,
+  flipVertical: false,
   debounceDelay: 100,
 });
 
@@ -42,6 +48,8 @@ const isModalOpen = ref(false);
 const apiUrl = ref(props.apiUrl);
 const gridWidth = ref(props.gridWidth);
 const gridHeight = ref(props.gridHeight);
+const flipHorizontal = ref(props.flipHorizontal);
+const flipVertical = ref(props.flipVertical);
 const debounceDelay = ref(props.debounceDelay);
 const modalRef = ref<HTMLDialogElement | null>(null);
 const triggerRef = ref<HTMLButtonElement | null>(null);
@@ -199,6 +207,8 @@ function saveSettings(): void {
   emit("update:apiUrl", apiUrl.value);
   emit("update:gridWidth", parseInt(gridWidth.value.toString()));
   emit("update:gridHeight", parseInt(gridHeight.value.toString()));
+  emit("update:flipHorizontal", flipHorizontal.value);
+  emit("update:flipVertical", flipVertical.value);
   emit("update:debounceDelay", parseInt(debounceDelay.value.toString()));
   closeModal();
 }
@@ -222,6 +232,20 @@ watch(
   () => props.gridHeight,
   (newValue) => {
     gridHeight.value = newValue;
+  }
+);
+
+watch(
+  () => props.flipHorizontal,
+  (newValue) => {
+    flipHorizontal.value = newValue;
+  }
+);
+
+watch(
+  () => props.flipVertical,
+  (newValue) => {
+    flipVertical.value = newValue;
   }
 );
 
@@ -415,6 +439,63 @@ watch(
                   Height of the LED matrix in pixels
                 </p>
               </div>
+            </div>
+          </fieldset>
+
+          <!-- Flip Matrix -->
+          <fieldset class="space-y-3">
+            <legend
+              class="text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              Flip Matrix
+            </legend>
+            <div class="grid grid-cols-2 gap-4">
+
+              <div class="flex items-center justify-between">
+                <label for="flip-horizontal" class="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                  Horizontal
+                </label>
+
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="flipHorizontal"
+                  @click="flipHorizontal = !flipHorizontal"
+                  class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                         dark:focus:ring-offset-gray-800"
+                  :class="flipHorizontal ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'"
+                >
+                  <span
+                    class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform"
+                    :class="flipHorizontal ? 'translate-x-5' : 'translate-x-1'"
+                  ></span>
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between">
+                <label for="flip-vertical" class="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+                  Vertical
+                </label>
+
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="flipVertical"
+                  @click="flipVertical = !flipVertical"
+                  class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                         dark:focus:ring-offset-gray-800"
+                  :class="flipVertical ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'"
+                >
+                  <span
+                    class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform"
+                    :class="flipVertical ? 'translate-x-5' : 'translate-x-1'"
+                  ></span>
+                </button>
+              </div>
+
+
             </div>
           </fieldset>
 
