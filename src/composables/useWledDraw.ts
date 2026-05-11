@@ -490,7 +490,7 @@ export function useWledDraw() {
     loadFromLocalStorage();
 
     // Set default API URL
-    const defaultHost = "192.168.68.132";
+    const defaultHost = "192.168.68.123";
     apiUrl.value = `http://${defaultHost}/json`;
 
     // Setup grid with the dimensions we just loaded

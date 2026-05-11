@@ -43,6 +43,14 @@ const pixelData = computed(() => props.modelValue);
 const lastDrawnIndex = ref<number | null>(null);
 const lastDrawnIndices = ref<number[]>([]);
 
+// Touch support
+const lastTouchTime = ref(0);
+const touchStartTime = ref(0);
+const isLongPress = ref(false);
+const longPressTimer = ref<number | null>(null);
+const LONG_PRESS_DURATION = 150; // ms
+const DOUBLE_TAP_DELAY = 300; // ms
+
 // Computed properties
 const viewBox = computed(() => {
   return `0 0 ${props.cellSize * props.gridWidth} ${
@@ -59,6 +67,21 @@ const activeColor = computed(() => {
 function mouseDown(e: MouseEvent | TouchEvent) {
   isMouseDown.value = true;
   lastDrawnIndices.value = [];
+  isLongPress.value = false;
+  
+  // Handle touch events
+  if (e.type === 'touchstart') {
+    touchStartTime.value = Date.now();
+    
+    // Set up long press detection
+    if (longPressTimer.value) {
+      clearTimeout(longPressTimer.value);
+    }
+    
+    longPressTimer.value = window.setTimeout(() => {
+      isLongPress.value = true;
+    }, LONG_PRESS_DURATION);
+  }
 }
 
 // Reset on mouseUp
@@ -66,6 +89,35 @@ function mouseUp(e: MouseEvent | TouchEvent) {
   isMouseDown.value = false;
   lastDrawnIndex.value = null;
   lastDrawnIndices.value = [];
+  
+  // Clear long press timer
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value);
+    longPressTimer.value = null;
+  }
+  
+  // Handle touch end for double tap detection
+  if (e.type === 'touchend' && !isLongPress.value) {
+    const now = Date.now();
+    const touchDuration = now - touchStartTime.value;
+    
+    // Only consider it a tap if it was quick (not a drag)
+    if (touchDuration < 200) {
+      const timeSinceLastTouch = now - lastTouchTime.value;
+      
+      if (timeSinceLastTouch < DOUBLE_TAP_DELAY && timeSinceLastTouch > 50) {
+        // Double tap detected - get the touch target
+        const touch = (e as TouchEvent).changedTouches[0];
+        const element = document.elementFromPoint(touch.clientX, touch.clientY) as SVGRectElement;
+        if (element && element.dataset.number) {
+          handleDoubleTap(element);
+        }
+        lastTouchTime.value = 0; // Reset to prevent triple tap
+      } else {
+        lastTouchTime.value = now;
+      }
+    }
+  }
 
   // Always emit draw-complete when finished
   emit("draw-complete");
@@ -200,18 +252,15 @@ function dragColor(e: MouseEvent) {
   }
 }
 
-function rightClick(e: MouseEvent) {
-  e.preventDefault();
-  const target = e.target as SVGRectElement;
+// Handle double tap to erase
+function handleDoubleTap(target: SVGRectElement) {
   const index = parseInt(target.dataset.number || "-1");
-
-  // Skip if we can't determine the index
   if (index === -1) return;
 
   // Get all indices for the brush (for multi-pixel eraser)
   const indices = getBrushIndices(index);
 
-  // Filter to only includes pixels that aren't already black
+  // Filter to only include pixels that aren't already black
   const indicesToErase = indices.filter(
     (idx) => pixelData.value[idx] !== "#000000"
   );
@@ -251,18 +300,44 @@ function rightClick(e: MouseEvent) {
     emit("update:modelValue", newData);
   }
 }
+
+function rightClick(e: MouseEvent) {
+  e.preventDefault();
+  const target = e.target as SVGRectElement;
+  handleDoubleTap(target);
+}
+
+// Enhanced touch move handler
+function handleTouchMove(e: TouchEvent) {
+  e.preventDefault(); // Prevent scrolling
+  
+  if (!isMouseDown.value || !isLongPress.value) return;
+  
+  const touch = e.touches[0];
+  const element = document.elementFromPoint(touch.clientX, touch.clientY) as SVGRectElement;
+  
+  if (element && element.dataset.number) {
+    const mockEvent = {
+      target: element,
+      preventDefault: () => {}
+    } as unknown as MouseEvent;
+    
+    dragColor(mockEvent);
+  }
+}
 </script>
 
 <template>
   <div
-    class="flex flex-col w-full h-full overflow-auto select-none"
+    class="flex flex-col w-full h-full overflow-hidden select-none touch-none"
     @mousedown="mouseDown"
     @mouseup="mouseUp"
-    @touchstart="mouseDown"
-    @touchend="mouseUp"
+    @touchstart.passive="mouseDown"
+    @touchend.passive="mouseUp"
+    @touchmove.passive="handleTouchMove"
   >
     <div
-      class="flex items-center justify-center bg-gray-900 dark:bg-gray-800 rounded-lg shadow-lg p-4 h-full max-h-[89vh] transition-colors duration-200"
+      class="flex items-center justify-center bg-gray-900 dark:bg-gray-800 rounded-lg shadow-lg p-4 flex-1 min-h-0 transition-colors duration-200"
     >
       <svg :view-box.camel="viewBox" class="w-full h-full">
         <g v-for="(_, yIndex) in gridHeight" :key="`row-${yIndex}`">

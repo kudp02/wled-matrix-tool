@@ -6,9 +6,10 @@ import Toolbar from "./components/Toolbar.vue";
 import DarkModeToggle from "./components/DarkModeToggle.vue";
 import GradientGenerator from "./components/GradientGenerator.vue";
 import ImageUploader from "./components/ImageUploader.vue";
+import SaveToDevice from "./components/SaveToDevice.vue";
 import { useWledDraw } from "./composables/useWledDraw";
-import { ArrowLeft } from "lucide-vue-next";
-import { ref } from "vue";
+import { ArrowLeft, Menu } from "lucide-vue-next";
+import { ref, onMounted, onUnmounted } from "vue";
 
 // Initialize WLED drawing functionality with the enhanced composable
 const {
@@ -43,6 +44,34 @@ const brushSize = ref(1);
 
 // Settings modal control
 const isSettingsOpen = ref(false);
+
+// Mobile sidebar control
+const isSidebarOpen = ref(false);
+const isMobile = ref(window.innerWidth < 768);
+
+// Handle window resize for mobile detection
+function handleResize() {
+  isMobile.value = window.innerWidth < 768;
+  // Auto-close sidebar on desktop
+  if (!isMobile.value) {
+    isSidebarOpen.value = false;
+  }
+}
+
+// Add resize listener
+onMounted(() => {
+  window.addEventListener("resize", handleResize);
+  handleResize(); // Initial check
+});
+
+onUnmounted(() => {
+  window.removeEventListener("resize", handleResize);
+});
+
+// Toggle sidebar for mobile
+function toggleSidebar() {
+  isSidebarOpen.value = !isSidebarOpen.value;
+}
 
 /**
  * Handle pixel update from the drawing canvas
@@ -99,13 +128,27 @@ function handleBrushSizeChange(size: number) {
 
 <template>
   <div
-    class="flex min-h-screen bg-gray-50 text-gray-900 dark:bg-dark-primary dark:text-dark-text transition-colors duration-200"
+    class="flex h-screen bg-gray-50 text-gray-900 dark:bg-dark-primary dark:text-dark-text transition-colors duration-200 overflow-hidden"
   >
+    <!-- Mobile Menu Toggle -->
+    <button
+      v-if="isMobile"
+      @click="toggleSidebar"
+      class="fixed top-4 left-4 z-10 p-2 bg-white dark:bg-dark-accent shadow-lg rounded-lg md:hidden transition-all duration-300"
+    >
+      <Menu class="w-6 h-6" />
+    </button>
+
     <!-- Sidebar -->
     <aside
-      class="w-[300px] bg-white dark:bg-dark-primary shadow-md overflow-y max-h-screen transition-colors duration-200"
+      class="w-[300px] bg-white dark:bg-dark-primary shadow-md overflow-y-auto h-full transition-all duration-300"
+      :class="{
+        'fixed top-0 left-0 z-40': isMobile,
+        'transform -translate-x-full': isMobile && !isSidebarOpen,
+        'transform translate-x-0': isMobile && isSidebarOpen,
+      }"
     >
-      <div class="p-6 pr-3 flex flex-col gap-6 h-full overflow-y-auto">
+      <div class="p-6 pr-3 flex flex-col gap-6 h-full">
         <!-- Header with WLED link and dark mode toggle -->
         <div class="flex justify-between items-center mb-4">
           <div class="flex items-center gap-2">
@@ -147,9 +190,21 @@ function handleBrushSizeChange(size: number) {
       </div>
     </aside>
 
+    <!-- Mobile Sidebar Overlay -->
+    <div
+      v-if="isMobile && isSidebarOpen"
+      @click="isSidebarOpen = false"
+      class="fixed inset-0 z-30"
+      style="background-color: rgba(0, 0, 0, 0.15)"
+    ></div>
+
     <!-- Main Content Area -->
     <main
-      class="flex-1 p-6 pl-3 flex flex-col dark:bg-dark-primary transition-colors duration-200"
+      class="flex-1 p-6 flex flex-col dark:bg-dark-primary transition-colors duration-200 overflow-y-auto h-full"
+      :class="{
+        'pl-3': !isMobile,
+        'pt-16': isMobile,
+      }"
     >
       <!-- Status Notifications (Loading/Error) -->
       <div class="w-full max-w-3xl mx-auto mb-4" v-if="loading || error">
@@ -200,6 +255,15 @@ function handleBrushSizeChange(size: number) {
         @clear="clearScreen"
         @update:brushSize="handleBrushSizeChange"
       >
+        <!-- Save to device as GIF (uses WLED Image effect for smooth on/off) -->
+        <SaveToDevice
+          :api-url="apiUrl"
+          :pixel-data="pixelData"
+          :grid-width="gridWidth"
+          :grid-height="gridHeight"
+          :disabled="!apiUrl || loading || error"
+        />
+
         <!-- Settings Section -->
         <Settings
           v-model:api-url="apiUrl"

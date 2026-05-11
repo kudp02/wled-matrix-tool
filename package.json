@@ -17,6 +17,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.0.16",
     "lucide-vue-next": "^0.484.0",
+    "omggif": "^1.0.10",
     "vue": "^3.5.13"
   },
   "devDependencies": {

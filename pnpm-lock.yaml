@@ -14,6 +14,9 @@ importers:
       lucide-vue-next:
         specifier: ^0.484.0
         version: 0.484.0(vue@3.5.13(typescript@5.8.2))
+      omggif:
+        specifier: ^1.0.10
+        version: 1.0.10
       vue:
         specifier: ^3.5.13
         version: 3.5.13(typescript@5.8.2)
@@ -586,6 +589,9 @@ packages:
     resolution: {integrity: sha512-bdok/XvKII3nUpklnV6P2hxtMNrCboOjAcyBuQnWEhO665FwrSNRxU+AqpsyvO6LgGYPspN+lu5CLtw4jPRKNA==}
     engines: {node: '>=0.10.0'}
 
+  omggif@1.0.10:
+    resolution: {integrity: sha512-LMJTtvgc/nugXj0Vcrrs68Mn2D1r0zf630VNtqtpI1FEO7e+O9FP4gqs9AcnBaSEeoHIPm28u6qgPR0oyEpGSw==}
+
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -1106,6 +1112,8 @@ snapshots:
   node-releases@2.0.19: {}
 
   normalize-range@0.1.2: {}
+
+  omggif@1.0.10: {}
 
   picocolors@1.1.1: {}
 
