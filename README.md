@@ -1,79 +1,97 @@
-# WLED Matrix Editor 🎨✨
+# WLED Matrix Editor
 
-Turn your WLED 2D matrix into a pixel art canvas! This slick little web app lets you create, draw, and beam your designs straight to your LED matrix in real-time.
+Pixel art editor for WLED 2D matrices. Open it in a browser, draw on the
+canvas, the matrix mirrors what you're doing in real time. When you're happy
+with a drawing, save it to the device as a GIF that plays back through WLED's
+Image effect.
 
-![WLED Matrix Editor Demo](public/wled-matrix-editor.png)
+![WLED Matrix Editor](public/wled-matrix-editor.png)
 
-## ✨ Features
+## Why the GIF route
 
-### 🖌️ Drawing Tools
+Saving a drawing as a regular WLED preset (the raw pixel-array kind) works,
+but those presets snap to full brightness with no fade when you turn the
+lights on — they bypass WLED's effect renderer, so the global brightness curve
+never touches them. Uploading the drawing as a GIF and playing it via the
+Image effect (`fx:53`) goes through the normal render path, so on/off
+transitions fade like any other effect. That's the only reason this tool
+encodes GIFs in the browser — to work around that one limitation.
 
-- **Pixel-perfect drawing** - Click and drag to paint your masterpiece
-- **Multiple brush sizes** - Choose from two brush sizes
-- **Right-click to erase** - Quick erasing without switching tools
-- **Keyboard shortcuts** - Power user? We've got you covered
+## Features
 
-### 🎨 Color & Effects
+### Drawing
 
-- **Full RGB color picker** - Choose any color with RGB sliders
-- **Color history** - Quick access to recently used colors
-- **Gradient generator** - Create linear, radial, or elliptical gradients across your matrix
-- **Image uploader** - Import images and automatically resize them to fit your matrix
+- Click-and-drag pen with two brush sizes
+- Right-click to erase
+- Undo with `Ctrl+Z`, clear with `Ctrl+Shift+C`
+- Keyboard shortcuts for tool switching: `P`, `E`, `B`, `[`, `]`
 
-### 🔄 WLED Integration
+### Color and composition
 
-- **Live updates** - See your changes instantly on your LED matrix
-- **Auto-detection** - Automatically detects your matrix dimensions
-- **Dark mode** - Easy on the eyes for late-night creative sessions
+- Full RGB picker with recent-color history
+- Linear, radial, and elliptical gradient generator
+- Image import with automatic resampling to your matrix size
 
-### 💾 Storage & Sharing
+### WLED integration
 
-- **Auto-save** - Never lose your work with automatic localStorage saving
-- **JSON presets** - Copy JSON data for use in WLED presets
+- Live preview — every brush stroke is sent to the device over the JSON API
+- Save the canvas to the device as a GIF, with an optional `psave` to a
+  preset slot in the same call
+- Discover other WLED devices on the network via `/json/nodes` (the seed
+  device asks its UDP sync mesh; clicking a peer chains to discovery again)
+- The last-used device URL is kept in `localStorage`
+- Matrix dimensions are read from `info.leds.matrix` on connect
 
-## 🚀 Getting Started
+### Quality of life
 
-### Option 1: Run locally
+- Dark mode
+- Auto-saves drawings to localStorage
+- Copy a raw JSON preset to the clipboard if you prefer the classic flow
 
-1. Clone this repo
-2. Install dependencies with `pnpm install`
-3. Run the dev server with `pnpm dev`
-4. Build for production with `pnpm build`
+## Getting started
 
-### Option 2: One-file version
+### From source
 
-Download the single-file HTML from the releases section and upload to your wled controller <your-wled-ip>/edit
+```bash
+pnpm install
+pnpm dev          # http://localhost:5173
+pnpm build        # single-file build at dist/index.html
+```
 
-## ⚙️ Configuration
+Production build is a single inlined HTML file (~180 KB gzipped). Everything's
+in there: JS, CSS, fonts.
 
-First time? Just enter your WLED device IP in the settings panel (gear icon). The app will:
+### Running it on the WLED device
 
-1. Connect to your WLED device
-2. Auto-detect your matrix dimensions
-3. Start mirroring your drawing to the LEDs in real-time
+Upload `dist/index.html` to the WLED filesystem at `http://<your-wled>/edit`.
+Once it's served by WLED itself, calls to the API are same-origin and you
+skip CORS entirely.
 
-## 🎮 Controls & Tips
+### First time setup
 
-- **Pen tool (P)**: Click or drag to draw
-- **Eraser (E)**: Erase pixels
-- **Brush size (B)**: Toggle brush size, or use [ and ] keys
-- **Undo (Ctrl+Z)**: Revert last action
-- **Clear (Ctrl+Shift+C)**: Clear the entire canvas
+Open the settings panel (gear icon), enter your WLED's address, click Save.
+The matrix dimensions are read from the device. If you have more than one
+WLED on the network, click Discover — the tool will list the rest.
 
-## 🛠️ Tech Stack
+## Keyboard reference
 
-- Vue 3 with TypeScript
-- Tailwind CSS
-- Vite for builds
+| Action            | Shortcut         |
+| ----------------- | ---------------- |
+| Pen               | `P`              |
+| Eraser            | `E`              |
+| Cycle brush size  | `B`, or `[` / `]`|
+| Undo              | `Ctrl+Z`         |
+| Clear canvas      | `Ctrl+Shift+C`   |
+| Erase pixel       | Right-click drag |
 
-## 🤝 Contributing
+## Future Ideas
 
-Got ideas? Found bugs? PRs welcome! Or just open an issue.
+- Multi-frame animations. `omggif` already supports them, this just needs a timeline UI.
+- Browse existing GIFs on the device via `/edit?list=/` so you can overwrite
+  or delete from the tool.
 
-## 📝 License
+PRs and issues welcome.
 
-MIT - do whatever you want with it! Build something cool!
+## License
 
----
-
-Made with ❤️ for the WLED community. Now go make something awesome!
+MIT.
