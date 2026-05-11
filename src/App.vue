@@ -22,6 +22,7 @@ const {
   flipHorizontal,
   flipVertical,
   pixelData,
+  displayPixelData,
   currentColor,
   colorPalette,
   loading,
@@ -257,10 +258,12 @@ function handleBrushSizeChange(size: number) {
         @clear="clearScreen"
         @update:brushSize="handleBrushSizeChange"
       >
-        <!-- Save to device as GIF (uses WLED Image effect for smooth on/off) -->
+        <!-- Save to device as GIF (uses WLED Image effect for smooth on/off).
+             Uses displayPixelData so the encoded GIF reflects any active flips,
+             matching what the live preview shows on the matrix. -->
         <SaveToDevice
           :api-url="apiUrl"
-          :pixel-data="pixelData"
+          :pixel-data="displayPixelData"
           :grid-width="gridWidth"
           :grid-height="gridHeight"
           :disabled="!apiUrl || loading || error"

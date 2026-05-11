@@ -55,17 +55,27 @@ export function useWledDraw() {
   const pixelDataChanged = ref(false); // Flag to track if pixel data has changed
 
   // ===== COMPUTED VALUES FOR WLED API =====
-  // Format JSON payload for sending to WLED API
-  const wledJson = computed(() => {
-    return `{"on": true,"bri": 230, "v": true, "seg": {"i":[${formattedColors.value}]}}`;
+
+  // pixelData remapped through any active flips. This is the single source of
+  // truth for "what should actually go to the device" — wledJson, the live
+  // sender, and the GIF save flow all consume it, so flips stay consistent.
+  const displayPixelData = computed(() => {
+    let data = pixelData.value;
+    if (flipHorizontal.value) {
+      data = flipHorizontalRaw(data, gridWidth.value, gridHeight.value);
+    }
+    if (flipVertical.value) {
+      data = flipVerticalRaw(data, gridWidth.value, gridHeight.value);
+    }
+    return data;
   });
 
-  // Format pixel colors for WLED API (removes # from hex codes)
-  const formattedColors = computed(() => {
-    return pixelData.value
-      .map((color) => `"${color || "#000000"}"`)
-      .join(",")
-      .replaceAll("#", "");
+  // Format JSON payload for sending to WLED API (and for the Copy button).
+  const wledJson = computed(() => {
+    const colors = displayPixelData.value
+      .map((c) => `"${(c || "#000000").replace("#", "")}"`)
+      .join(",");
+    return `{"on": true,"bri": 230, "v": true, "seg": {"i":[${colors}]}}`;
   });
 
   // ===== CORE METHODS =====
@@ -188,11 +198,9 @@ export function useWledDraw() {
   function sendToWledImmediate(): void {
     if (ignoreApi.value) return;
 
-    const payload = buildWledPayload()
-
     fetch(apiUrl.value, {
       method: "POST",
-      body: payload,
+      body: wledJson.value,
       headers: {
         "Content-type": "application/json; charset=UTF-8",
       },
@@ -206,29 +214,6 @@ export function useWledDraw() {
         console.error("WLED API Error:", error);
         error.value = true;
       });
-  }
-
-  function buildWledPayload(): string {
-    let data = pixelData.value
-
-    if(flipHorizontal.value){
-        data = flipHorizontalRaw(data, gridWidth.value, gridHeight.value)
-    }
-
-    if(flipVertical.value){
-        data = flipVerticalRaw(data, gridWidth.value, gridHeight.value)
-    }
-
-    const colors = data
-      .map(c => `"${(c || "#000000").replace("#", "")}"`)
-      .join(',')
-
-    return `{
-      "on": true,
-      "bri": 230,
-      "v": true,
-      "seg": { "i": [${colors}] }
-    }`
   }
 
   function flipHorizontalRaw(data: string[], width: number, height: number) {
@@ -504,12 +489,15 @@ export function useWledDraw() {
       apiUrl.value = localStorage.apiUrl;
     }
 
+    // localStorage stores everything as strings — "false" is truthy, so
+    // Boolean(localStorage.flipHorizontal) is always true once anything's
+    // been saved. Compare to the literal string instead.
     if (localStorage.flipHorizontal) {
-      flipHorizontal.value = Boolean(localStorage.flipHorizontal);
+      flipHorizontal.value = localStorage.flipHorizontal === "true";
     }
 
     if (localStorage.flipVertical) {
-      flipVertical.value = Boolean(localStorage.flipVertical);
+      flipVertical.value = localStorage.flipVertical === "true";
     }
 
     // Then load the other settings
@@ -600,6 +588,18 @@ export function useWledDraw() {
     localStorage.debounceDelay = newDelay;
   });
 
+  // Watch flip toggles: persist them and immediately push the re-mapped frame
+  // to the device. Without this, toggling a flip in Settings wouldn't take
+  // effect on the matrix until the next pixel draw or other tweak.
+  watch([flipHorizontal, flipVertical], () => {
+    localStorage.flipHorizontal = String(flipHorizontal.value);
+    localStorage.flipVertical = String(flipVertical.value);
+    if (!isInitializing.value) {
+      pixelDataChanged.value = true;
+      debouncedSendToWled(true);
+    }
+  });
+
   // Initialize on component mount
   onMounted(() => {
     initialize();
@@ -616,6 +616,7 @@ export function useWledDraw() {
     flipHorizontal,
     flipVertical,
     pixelData,
+    displayPixelData,
     currentColor,
     colorPalette,
     loading,
