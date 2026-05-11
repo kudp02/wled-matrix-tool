@@ -420,6 +420,7 @@ export function useWledDraw() {
     localStorage.gridWidth = gridWidth.value;
     localStorage.gridHeight = gridHeight.value;
     localStorage.debounceDelay = debounceDelay.value;
+    if (apiUrl.value) localStorage.apiUrl = apiUrl.value;
     // Note: History is saved separately to avoid circular calls
   }
 
@@ -444,6 +445,11 @@ export function useWledDraw() {
 
     if (localStorage.gridHeight) {
       gridHeight.value = Number(localStorage.gridHeight);
+    }
+
+    // API URL: load before initialize() picks a fallback so we don't clobber it
+    if (localStorage.apiUrl) {
+      apiUrl.value = localStorage.apiUrl;
     }
 
     // Then load the other settings
@@ -486,12 +492,13 @@ export function useWledDraw() {
   function initialize(): void {
     isInitializing.value = true;
 
-    // First load settings including grid dimensions
+    // First load settings including grid dimensions and any saved apiUrl
     loadFromLocalStorage();
 
-    // Set default API URL
-    const defaultHost = "192.168.68.123";
-    apiUrl.value = `http://${defaultHost}/json`;
+    // Only fall back to the hardcoded default if localStorage didn't supply one
+    if (!apiUrl.value) {
+      apiUrl.value = `http://192.168.68.123/json`;
+    }
 
     // Setup grid with the dimensions we just loaded
     setupGrid();
@@ -522,8 +529,9 @@ export function useWledDraw() {
     }
   });
 
-  // Watch for changes to the API URL and fetch WLED info
-  watch(apiUrl, () => {
+  // Watch for changes to the API URL: persist and re-fetch WLED info
+  watch(apiUrl, (newUrl) => {
+    if (newUrl) localStorage.apiUrl = newUrl;
     fetchWledInfo();
   });
 

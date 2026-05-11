@@ -1,6 +1,16 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from "vue";
-import { Cog, X, Save } from "lucide-vue-next";
+import { ref, watch, onBeforeUnmount, computed } from "vue";
+import { Cog, X, Save, Radar, Loader2 } from "lucide-vue-next";
+
+// WLED node — entry from GET /json/nodes (UDP-broadcast peer discovery mesh).
+// The current device is NOT included in its own list; we add it manually.
+interface WledNode {
+  name: string;
+  ip: string;
+  type: number;
+  vid: number;
+  age: number;
+}
 
 interface SettingsProps {
   apiUrl: string;
@@ -35,6 +45,69 @@ const gridHeight = ref(props.gridHeight);
 const debounceDelay = ref(props.debounceDelay);
 const modalRef = ref<HTMLDialogElement | null>(null);
 const triggerRef = ref<HTMLButtonElement | null>(null);
+
+// Discovery state
+const discovering = ref(false);
+const discoveryError = ref("");
+const discoveredNodes = ref<WledNode[]>([]);
+const discoveryRan = ref(false);
+
+// Reachable base URL ("http://host") derived from whatever the user typed.
+// Accept either "http://1.2.3.4/json" or just "1.2.3.4" / "wled.local".
+const seedBase = computed(() => {
+  const raw = apiUrl.value.trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw.includes("://") ? raw : `http://${raw}`);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return "";
+  }
+});
+
+async function discoverDevices(): Promise<void> {
+  if (!seedBase.value) {
+    discoveryError.value = "Enter a WLED address first, then click Discover.";
+    return;
+  }
+  discovering.value = true;
+  discoveryError.value = "";
+  discoveredNodes.value = [];
+  discoveryRan.value = true;
+
+  try {
+    const res = await fetch(`${seedBase.value}/json/nodes`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error(
+          "This WLED version doesn't expose /json/nodes (needs 0.13+)."
+        );
+      }
+      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    }
+    const data = await res.json();
+    const list: WledNode[] = Array.isArray(data?.nodes) ? data.nodes : [];
+    // Drop entries with empty/zero IP that the device might still return.
+    discoveredNodes.value = list.filter(
+      (n) => n.ip && n.ip !== "0.0.0.0"
+    );
+  } catch (e) {
+    discoveryError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    discovering.value = false;
+  }
+}
+
+async function selectNode(node: WledNode): Promise<void> {
+  apiUrl.value = `http://${node.ip}/json`;
+  // Chain through the mesh: each device has its own view of peers, so
+  // re-running discovery from the newly-picked device often reveals nodes
+  // the previous seed hadn't heard from yet.
+  await discoverDevices();
+}
 
 // Trap focus within the modal
 function trapFocus(event: KeyboardEvent): void {
@@ -218,7 +291,7 @@ watch(
             >
               WLED API URL
             </label>
-            <div class="mt-1 flex rounded-md shadow-sm">
+            <div class="mt-1 flex rounded-md shadow-sm gap-2">
               <input
                 type="text"
                 id="wled-url"
@@ -227,13 +300,69 @@ watch(
                 class="flex-1 py-2 px-3 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 aria-describedby="url-description"
               />
+              <button
+                type="button"
+                @click="discoverDevices"
+                :disabled="discovering || !seedBase"
+                class="inline-flex items-center gap-1 py-2 px-3 text-sm bg-gray-100 text-gray-800 rounded border border-gray-300 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                :title="seedBase ? 'Ask this device about its WLED peers' : 'Enter a WLED address first'"
+              >
+                <Loader2
+                  v-if="discovering"
+                  class="w-4 h-4 animate-spin"
+                />
+                <Radar v-else class="w-4 h-4" />
+                <span>Discover</span>
+              </button>
             </div>
             <p
               id="url-description"
               class="mt-1 text-xs text-gray-500 dark:text-gray-400"
             >
-              The JSON API endpoint of your WLED device
+              The JSON API endpoint of your WLED device. Click <b>Discover</b>
+              to list other WLED devices this one has seen on the network
+              (requires sync to be enabled).
             </p>
+
+            <!-- Discovery results -->
+            <div v-if="discoveryError" class="text-xs rounded p-2 bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200">
+              {{ discoveryError }}
+            </div>
+            <div
+              v-else-if="discoveryRan && !discovering && discoveredNodes.length === 0"
+              class="text-xs rounded p-2 bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+            >
+              No peers found. Make sure UDP sync is enabled on this device
+              (WLED &rarr; Sync Setup &rarr; Receive/Send broadcasts) and other
+              WLED devices are on the same network.
+            </div>
+            <ul
+              v-if="discoveredNodes.length > 0"
+              class="mt-1 border border-gray-200 dark:border-gray-700 rounded divide-y divide-gray-100 dark:divide-gray-700 max-h-40 overflow-y-auto"
+            >
+              <li
+                v-for="node in discoveredNodes"
+                :key="node.ip"
+                class="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                @click="selectNode(node)"
+                :title="`Last seen ${node.age}s ago${node.vid ? ' · build ' + node.vid : ''}`"
+              >
+                <div class="flex flex-col min-w-0">
+                  <span class="truncate font-medium text-gray-900 dark:text-gray-100">
+                    {{ node.name || "Unnamed" }}
+                  </span>
+                  <span class="font-mono text-xs text-gray-500 dark:text-gray-400">
+                    {{ node.ip }}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  class="text-xs py-1 px-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Select
+                </button>
+              </li>
+            </ul>
           </div>
 
           <!-- Matrix Dimensions -->
