@@ -8,7 +8,9 @@ import {
   Brush,
   Copy,
   Check,
+  Sun,
 } from "lucide-vue-next";
+import RangeSlider from "./RangeSlider.vue";
 
 // Define toolbar props
 interface ToolbarProps {
@@ -16,6 +18,7 @@ interface ToolbarProps {
   gridWidth: number;
   gridHeight: number;
   brushSize?: number;
+  brightness?: number;
   wledJson?: string; // Add JSON prop
 }
 
@@ -23,6 +26,7 @@ interface ToolbarProps {
 const props = withDefaults(defineProps<ToolbarProps>(), {
   currentTool: "pen",
   brushSize: 1,
+  brightness: 230,
   wledJson: "", // Default for wledJson
 });
 
@@ -30,6 +34,7 @@ const props = withDefaults(defineProps<ToolbarProps>(), {
 const emit = defineEmits<{
   "update:currentTool": [tool: string];
   "update:brushSize": [size: number];
+  "update:brightness": [value: number];
   undo: [];
   clear: [];
 }>();
@@ -264,6 +269,34 @@ onUnmounted(() => {
       {{ gridWidth }}×{{ gridHeight }}
     </div>
 
+    <!-- Separator -->
+    <div class="h-8 w-px bg-gray-300 dark:bg-gray-600 mx-2"></div>
+
+    <!-- Global brightness — Reka Slider so it matches the picker's sliders.
+         The Range fill uses a low-opacity blue so the "filled" portion is
+         visible but doesn't compete with the color picker. Thumb design
+         mirrors the color sliders' (white border + black/40 ring). -->
+    <div class="flex items-center gap-2 mx-2 group relative shrink-0">
+      <Sun class="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
+      <RangeSlider
+        :model-value="brightness"
+        @update:model-value="(v) => emit('update:brightness', v)"
+        :min="1"
+        :max="255"
+        aria-label="Global matrix brightness"
+        class="w-24 sm:w-32 shrink-0"
+      />
+      <span
+        class="text-xs font-mono text-gray-600 dark:text-gray-400 tabular-nums w-9 text-right"
+        >{{ Math.round((brightness / 255) * 100) }}%</span
+      >
+      <span
+        class="absolute left-1/2 -bottom-8 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10"
+      >
+        Global brightness
+      </span>
+    </div>
+
     <!-- Spacer -->
     <div class="flex-grow"></div>
 
@@ -290,3 +323,4 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+

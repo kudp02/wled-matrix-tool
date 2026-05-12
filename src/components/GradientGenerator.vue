@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
 import { Plus, Minus } from "lucide-vue-next";
+import {
+  PopoverRoot,
+  PopoverTrigger,
+  PopoverPortal,
+  PopoverContent,
+  ColorSwatch,
+} from "reka-ui";
+import RangeSlider from "./RangeSlider.vue";
+import ColorPickerPanel from "./ColorPickerPanel.vue";
 
 interface ColorStop {
   color: string;
@@ -645,25 +654,6 @@ onMounted(() => loadFromLocalStorage());
 </script>
 
 <style scoped>
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #3b82f6;
-  cursor: pointer;
-  margin-top: -6px;
-}
-
-input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #3b82f6;
-  cursor: pointer;
-}
-
 .gradient-center-indicator {
   position: absolute;
   width: 8px;
@@ -748,27 +738,40 @@ input[type="range"]::-moz-range-thumb {
             class="bg-gray-50 dark:bg-dark-accent p-2 rounded-lg flex items-center gap-2"
           >
             <div class="flex-none">
-              <div
-                class="w-7 h-7 rounded cursor-pointer shadow-sm border border-gray-300 dark:border-gray-600"
-                :style="{ backgroundColor: stop.color }"
-              >
-                <input
-                  type="color"
-                  :value="stop.color"
-                  @input="e => updateStopColor(index, (e.target as HTMLInputElement).value)"
-                  class="opacity-0 w-full h-full cursor-pointer"
-                />
-              </div>
+              <PopoverRoot>
+                <PopoverTrigger as-child>
+                  <ColorSwatch
+                    as="button"
+                    type="button"
+                    :color="stop.color"
+                    class="w-7 h-7 rounded cursor-pointer shadow-sm border border-gray-300 dark:border-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    :style="{ backgroundColor: stop.color }"
+                    :aria-label="`Edit color ${stop.color}`"
+                    :title="stop.color.toUpperCase()"
+                  />
+                </PopoverTrigger>
+                <PopoverPortal>
+                  <PopoverContent
+                    :side-offset="8"
+                    align="start"
+                    class="z-50 w-72 p-4 bg-white dark:bg-dark-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl"
+                  >
+                    <ColorPickerPanel
+                      :model-value="stop.color"
+                      @update:model-value="(v: string) => updateStopColor(index, v)"
+                    />
+                  </PopoverContent>
+                </PopoverPortal>
+              </PopoverRoot>
             </div>
 
             <div class="flex-1">
-              <input
-                type="range"
-                :value="stop.position"
-                @input="e => updateStopPosition(index, parseInt((e.target as HTMLInputElement).value))"
-                min="0"
-                max="100"
-                class="w-full h-2 appearance-none bg-gradient-to-r from-gray-200 to-gray-400 dark:from-gray-700 dark:to-gray-500ed-full outline-none"
+              <RangeSlider
+                :model-value="stop.position"
+                @update:model-value="(v) => updateStopPosition(index, v)"
+                :min="0"
+                :max="100"
+                aria-label="Color stop position"
               />
             </div>
 
@@ -847,13 +850,12 @@ input[type="range"]::-moz-range-thumb {
               Reset
             </button>
           </div>
-          <input
-            type="range"
-            :value="customAngle"
-            @input="e => updateCustomAngle(parseInt((e.target as HTMLInputElement).value))"
-            min="0"
-            max="359"
-            class="w-full h-2 appearance-none bg-gradient-to-r from-gray-200 to-gray-400 dark:from-gray-700 dark:to-gray-500 rounded-full outline-none"
+          <RangeSlider
+            :model-value="customAngle"
+            @update:model-value="updateCustomAngle"
+            :min="0"
+            :max="359"
+            aria-label="Gradient angle"
           />
           <div
             class="flex justify-between text-xs text-gray-500 dark:text-gray-400"
@@ -880,13 +882,12 @@ input[type="range"]::-moz-range-thumb {
                 Center
               </button>
             </div>
-            <input
-              type="range"
-              :value="centerX"
-              @input="e => updateCenterX(parseInt((e.target as HTMLInputElement).value))"
-              min="0"
-              max="100"
-              class="w-full h-2 appearance-none bg-gradient-to-r from-gray-200 to-gray-400 dark:from-gray-700 dark:to-gray-500 rounded-full outline-none"
+            <RangeSlider
+              :model-value="centerX"
+              @update:model-value="updateCenterX"
+              :min="0"
+              :max="100"
+              aria-label="Gradient center X"
             />
           </div>
 
@@ -902,13 +903,12 @@ input[type="range"]::-moz-range-thumb {
                 Center
               </button>
             </div>
-            <input
-              type="range"
-              :value="centerY"
-              @input="e => updateCenterY(parseInt((e.target as HTMLInputElement).value))"
-              min="0"
-              max="100"
-              class="w-full h-2 appearance-none bg-gradient-to-r from-gray-200 to-gray-400 dark:from-gray-700 dark:to-gray-500 rounded-full outline-none"
+            <RangeSlider
+              :model-value="centerY"
+              @update:model-value="updateCenterY"
+              :min="0"
+              :max="100"
+              aria-label="Gradient center Y"
             />
           </div>
         </div>
@@ -926,13 +926,12 @@ input[type="range"]::-moz-range-thumb {
               Reset
             </button>
           </div>
-          <input
-            type="range"
-            :value="ellipticalRotation"
-            @input="e => updateEllipticalRotation(parseInt((e.target as HTMLInputElement).value))"
-            min="0"
-            max="359"
-            class="w-full h-2 appearance-none bg-gradient-to-r from-gray-200 to-gray-400 dark:from-gray-700 dark:to-gray-500 rounded-full outline-none"
+          <RangeSlider
+            :model-value="ellipticalRotation"
+            @update:model-value="updateEllipticalRotation"
+            :min="0"
+            :max="359"
+            aria-label="Elliptical rotation"
           />
           <div
             class="flex justify-between text-xs text-gray-500 dark:text-gray-400"
@@ -958,13 +957,12 @@ input[type="range"]::-moz-range-thumb {
               Reset
             </button>
           </div>
-          <input
-            type="range"
-            :value="scaleValue"
-            @input="e => updateScale(parseInt((e.target as HTMLInputElement).value))"
-            min="50"
-            max="300"
-            class="w-full h-2 appearance-none bg-gradient-to-r from-gray-200 to-gray-400 dark:from-gray-700 dark:to-gray-500 rounded-full outline-none"
+          <RangeSlider
+            :model-value="scaleValue"
+            @update:model-value="updateScale"
+            :min="50"
+            :max="300"
+            aria-label="Gradient scale"
           />
           <div
             class="flex justify-between text-xs text-gray-500 dark:text-gray-400"

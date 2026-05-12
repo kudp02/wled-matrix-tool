@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import RangeSlider from "./RangeSlider.vue";
 
 // Define props for component
 const props = defineProps<{
@@ -255,12 +256,11 @@ watch([brightness, contrast], () => {
           >
             Brightness: {{ brightness }}%
           </label>
-          <input
-            type="range"
+          <RangeSlider
             v-model="brightness"
-            min="0"
-            max="200"
-            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+            :min="0"
+            :max="200"
+            aria-label="Image brightness"
           />
         </div>
         <div>
@@ -269,12 +269,11 @@ watch([brightness, contrast], () => {
           >
             Contrast: {{ contrast }}%
           </label>
-          <input
-            type="range"
+          <RangeSlider
             v-model="contrast"
-            min="0"
-            max="50"
-            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+            :min="0"
+            :max="50"
+            aria-label="Image contrast"
           />
         </div>
       </div>

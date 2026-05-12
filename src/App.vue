@@ -21,6 +21,7 @@ const {
   gridHeight,
   flipHorizontal,
   flipVertical,
+  globalBrightness,
   pixelData,
   displayPixelData,
   currentColor,
@@ -245,6 +246,7 @@ function handleBrushSizeChange(size: number) {
       <Toolbar
         v-model:current-tool="currentTool"
         v-model:brush-size="brushSize"
+        v-model:brightness="globalBrightness"
         :grid-width="gridWidth"
         :grid-height="gridHeight"
         :wled-json="wledJson"

@@ -23,6 +23,7 @@ export function useWledDraw() {
   const gridHeight = ref(20); // Matrix height (in pixels)
   const flipHorizontal = ref(false); // Matrix flipped horizontally
   const flipVertical = ref(false); // Matrix flipped vertically
+  const globalBrightness = ref(230); // WLED master brightness (1-255)
   const pixelData = ref<string[]>([]); // Holds color values for each pixel
   const currentColor = ref("#ff2500"); // Currently selected drawing color
   const isInitializing = ref(true);
@@ -75,7 +76,7 @@ export function useWledDraw() {
     const colors = displayPixelData.value
       .map((c) => `"${(c || "#000000").replace("#", "")}"`)
       .join(",");
-    return `{"on": true,"bri": 230, "v": true, "seg": {"i":[${colors}]}}`;
+    return `{"on": true,"bri": ${globalBrightness.value}, "v": true, "seg": {"i":[${colors}]}}`;
   });
 
   // ===== CORE METHODS =====
@@ -500,6 +501,11 @@ export function useWledDraw() {
       flipVertical.value = localStorage.flipVertical === "true";
     }
 
+    if (localStorage.globalBrightness) {
+      const b = Number(localStorage.globalBrightness);
+      if (!isNaN(b) && b >= 1 && b <= 255) globalBrightness.value = b;
+    }
+
     // Then load the other settings
     if (localStorage.currentColor) {
       currentColor.value = localStorage.currentColor;
@@ -600,6 +606,17 @@ export function useWledDraw() {
     }
   });
 
+  // Watch global brightness: persist + push to device. The slider can fire
+  // many times during a drag, so debounce normally rather than forcing
+  // immediate sends.
+  watch(globalBrightness, (v) => {
+    localStorage.globalBrightness = String(v);
+    if (!isInitializing.value) {
+      pixelDataChanged.value = true;
+      debouncedSendToWled();
+    }
+  });
+
   // Initialize on component mount
   onMounted(() => {
     initialize();
@@ -615,6 +632,7 @@ export function useWledDraw() {
     gridHeight,
     flipHorizontal,
     flipVertical,
+    globalBrightness,
     pixelData,
     displayPixelData,
     currentColor,

@@ -1,16 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from "vue";
-import {
-  ColorAreaRoot,
-  ColorAreaArea,
-  ColorAreaThumb,
-  ColorSliderRoot,
-  ColorSliderTrack,
-  ColorSliderThumb,
-  ColorSwatchPickerRoot,
-  ColorSwatchPickerItem,
-} from "reka-ui";
+import { ColorSwatchPickerRoot, ColorSwatchPickerItem } from "reka-ui";
 import { ChevronDown, Plus, X, Check } from "lucide-vue-next";
+import ColorPickerPanel from "./ColorPickerPanel.vue";
 
 interface ColorPickerProps {
   modelValue: string;
@@ -30,34 +22,27 @@ const emit = defineEmits<{
 const PALETTE_SIZE = 10;
 const STORAGE_KEY = "userPalette";
 
-// Single source of truth — Reka components mutate this directly via v-model.
-const localColor = ref(props.modelValue);
-const hexInput = ref(props.modelValue.toUpperCase());
-// Compact list, no null gaps. Length grows when the user adds a color and
-// shrinks when they remove one. The "+" button is rendered after the last
-// item, but only while length < PALETTE_SIZE.
+// We forward through ColorPickerPanel which handles its own internal alpha
+// state — currentColor is always the 6-digit pre-multiplied hex.
+const currentColor = ref(props.modelValue.toLowerCase());
+
 const palette = ref<string[]>([]);
 const isExpanded = ref(props.expanded);
 const showPalette = ref(true);
 
-// Propagate parent → local without bouncing back.
 watch(
   () => props.modelValue,
   (v) => {
-    if (v.toLowerCase() !== localColor.value.toLowerCase()) {
-      localColor.value = v;
-      hexInput.value = v.toUpperCase();
+    if (v.toLowerCase() !== currentColor.value.toLowerCase()) {
+      currentColor.value = v.toLowerCase();
     }
   }
 );
 
-// Propagate local → parent + keep the hex field in sync.
-watch(localColor, (v) => {
-  hexInput.value = v.toUpperCase();
+watch(currentColor, (v) => {
   emit("update:modelValue", v);
 });
 
-// Persist palette changes.
 watch(
   palette,
   (p) => {
@@ -72,8 +57,7 @@ watch(
 
 function addCurrentToPalette(): void {
   if (palette.value.length >= PALETTE_SIZE) return;
-  const c = localColor.value.toLowerCase();
-  // Skip if already saved — no point cluttering the row with duplicates.
+  const c = currentColor.value.toLowerCase();
   if (palette.value.includes(c)) return;
   palette.value.push(c);
 }
@@ -82,21 +66,12 @@ function removeFromPalette(index: number): void {
   palette.value.splice(index, 1);
 }
 
-// Reka's ColorSwatchPickerRoot is uncontrolled (no v-model) — see comment on
-// the template. Clicking an item emits update:modelValue with the chosen hex.
-function onPaletteSelect(value: string | string[]): void {
-  const v = typeof value === "string" ? value : value[0];
-  if (v) localColor.value = v.toLowerCase();
-}
-
-function handleHexInput(): void {
-  const v = hexInput.value.trim();
-  if (/^#?[0-9A-Fa-f]{6}$/.test(v)) {
-    localColor.value = (v.startsWith("#") ? v : "#" + v).toLowerCase();
-  } else {
-    // Snap back to current on invalid entry.
-    hexInput.value = localColor.value.toUpperCase();
-  }
+// Reka's ColorSwatchPickerRoot is uncontrolled; we react to clicks via
+// @update:model-value rather than v-model. See comment on the template.
+function onPaletteSelect(value: unknown): void {
+  const v =
+    typeof value === "string" ? value : Array.isArray(value) ? value[0] : null;
+  if (typeof v === "string") currentColor.value = v.toLowerCase();
 }
 
 function toggleExpanded(): void {
@@ -110,8 +85,6 @@ onMounted(() => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        // Compact + lowercase. Tolerates the previous sparse format too
-        // (which had nulls for empty slots) by filtering anything non-string.
         palette.value = parsed
           .filter((x): x is string => typeof x === "string")
           .map((c) => c.toLowerCase())
@@ -146,7 +119,7 @@ watch(
       <div class="flex items-center">
         <div
           class="w-6 h-6 rounded-md mr-2 border border-gray-300 dark:border-gray-600"
-          :style="{ backgroundColor: localColor }"
+          :style="{ backgroundColor: currentColor }"
         ></div>
         <ChevronDown
           class="w-5 h-5 transition-transform duration-200"
@@ -157,64 +130,11 @@ watch(
 
     <!-- Collapsible content -->
     <div v-show="isExpanded" class="transition-all duration-300">
-      <!-- Figma-style picker -->
+      <!-- Picker panel — area + hue + alpha + hex/% inputs -->
       <div
-        class="p-4 bg-white dark:bg-dark-secondary transition-colors duration-200 space-y-3"
+        class="p-4 bg-white dark:bg-dark-secondary transition-colors duration-200"
       >
-        <!-- 2D saturation/brightness area -->
-        <ColorAreaRoot
-          v-model="localColor"
-          color-space="hsb"
-          x-channel="saturation"
-          y-channel="brightness"
-        >
-          <template #default="{ style }">
-            <ColorAreaArea
-              :style="style"
-              class="relative w-full aspect-[4/3] rounded-lg overflow-hidden cursor-crosshair border border-gray-200 dark:border-gray-700 select-none"
-            >
-              <ColorAreaThumb
-                class="block w-4 h-4 rounded-full border-2 border-white shadow-md ring-1 ring-black/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-              />
-            </ColorAreaArea>
-          </template>
-        </ColorAreaRoot>
-
-        <!-- Hue strip — Reka's Root/Track default to <span>, so force block
-             elements so width/height classes actually take effect. -->
-        <ColorSliderRoot
-          as="div"
-          v-model="localColor"
-          color-space="hsb"
-          channel="hue"
-          orientation="horizontal"
-        >
-          <ColorSliderTrack
-            as="div"
-            class="relative h-4 w-full rounded-full overflow-hidden cursor-pointer"
-          >
-            <ColorSliderThumb
-              class="block w-4 h-4 rounded-full border-2 border-white shadow-md ring-1 ring-black/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            />
-          </ColorSliderTrack>
-        </ColorSliderRoot>
-
-        <!-- Swatch + Hex input -->
-        <div class="flex gap-3 items-center pt-1">
-          <div
-            class="w-10 h-10 rounded-md border border-gray-200 dark:border-gray-700 shrink-0"
-            :style="{ backgroundColor: localColor }"
-          ></div>
-          <input
-            type="text"
-            v-model="hexInput"
-            @change="handleHexInput"
-            @keydown.enter="handleHexInput"
-            maxlength="7"
-            placeholder="#RRGGBB"
-            class="flex-1 h-10 px-3 py-2 border border-gray-200 dark:border-gray-600 dark:bg-dark-accent dark:text-dark-text rounded-lg font-mono uppercase text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
-          />
-        </div>
+        <ColorPickerPanel v-model="currentColor" />
       </div>
 
       <!-- User palette -->
@@ -240,9 +160,6 @@ watch(
              renders through a PrimitiveSlot, which is a multi-wrapper Reka
              pattern that doesn't have a single DOM element for Vue to pin
              v-show's inline `display: none` onto.
-             Horizontal scroll: ~6 swatches fit before the rest scroll into
-             view. pt-2 leaves room for the delete X that sits above each
-             filled swatch.
              Uncontrolled (no v-model): Reka's internal Listbox runs
              scrollIntoView on every modelValue change from a non-user source,
              which would yank the scroll back to the first swatch every time
@@ -255,8 +172,6 @@ watch(
           class="palette-scroll flex gap-2 px-4 pt-2 pb-4 overflow-x-auto"
           :class="{ hidden: !showPalette }"
         >
-          <!-- Filled swatches. Indicator is absolutely positioned so the
-               check icon doesn't claim flex space and reshape the swatch. -->
           <ColorSwatchPickerItem
             v-for="(slotColor, index) in palette"
             :key="`swatch-${slotColor}-${index}`"
@@ -266,7 +181,7 @@ watch(
             :title="slotColor.toUpperCase()"
           >
             <span
-              v-if="slotColor === localColor.toLowerCase()"
+              v-if="slotColor === currentColor"
               class="absolute inset-0 flex items-center justify-center pointer-events-none"
             >
               <Check class="w-4 h-4 text-white drop-shadow" />
@@ -281,13 +196,12 @@ watch(
             </button>
           </ColorSwatchPickerItem>
 
-          <!-- Single trailing "+" — only rendered while there's room left. -->
           <button
             v-if="palette.length < PALETTE_SIZE"
             type="button"
             class="w-9 h-9 shrink-0 rounded-md border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-500 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             @click="addCurrentToPalette"
-            :title="`Save ${localColor.toUpperCase()} to palette`"
+            :title="`Save ${currentColor.toUpperCase()} to palette`"
             aria-label="Save current color to palette"
           >
             <Plus class="w-4 h-4" />
