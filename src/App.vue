@@ -24,7 +24,6 @@ const {
   pixelData,
   displayPixelData,
   currentColor,
-  colorPalette,
   loading,
   error,
   wledJson,
@@ -169,12 +168,7 @@ function handleBrushSizeChange(size: number) {
         </div>
 
         <!-- Color Picker Section -->
-        <ColorPicker
-          v-model="currentColor"
-          v-model:palette="colorPalette"
-          :cell-size="cellSize"
-          class="flex-shrink-0"
-        />
+        <ColorPicker v-model="currentColor" class="flex-shrink-0" />
 
         <!-- Gradient Generator Section -->
         <GradientGenerator
