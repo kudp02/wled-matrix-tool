@@ -10,6 +10,11 @@ import {
 } from "reka-ui";
 import RangeSlider from "./RangeSlider.vue";
 import ColorPickerPanel from "./ColorPickerPanel.vue";
+import type {
+  GradientSettings,
+  FrameSource,
+} from "../composables/useFrames";
+import { renderGradient, mixHexRgb } from "../composables/gradientRenderer";
 
 interface ColorStop {
   color: string;
@@ -20,7 +25,12 @@ interface GradientGeneratorProps {
   pixelData: string[];
   gridWidth: number;
   gridHeight: number;
-  applyPixelArray?: (pixels: string[]) => void; // New prop for the applyPixelArray function
+  // Extended signature: callers in animation mode receive the gradient source
+  // params so they can persist them on the active frame.
+  applyPixelArray?: (pixels: string[], source?: FrameSource) => void;
+  // When supplied (active frame is gradient-sourced), the panel hydrates its
+  // internal state to these values instead of using its localStorage defaults.
+  initialSettings?: GradientSettings | null;
 }
 
 const props = defineProps<GradientGeneratorProps>();
@@ -202,241 +212,11 @@ const cssGradient = computed(() => {
   }
 });
 
-// Memoization cache for color calculations
-const colorCache = new Map<string, string>();
-
-function getColorFromCache(key: string, calcFunc: () => string): string {
-  if (!colorCache.has(key)) {
-    colorCache.set(key, calcFunc());
-    // Limit cache size to prevent memory issues
-    if (colorCache.size > 5000) {
-      // Clear half the cache when it gets too large
-      const keysToDelete = Array.from(colorCache.keys()).slice(0, 2500);
-      keysToDelete.forEach((k) => colorCache.delete(k));
-    }
-  }
-  return colorCache.get(key)!;
-}
-
-// Clear cache when gradient type changes
-watch(gradientType, () => {
-  colorCache.clear();
-});
-
-// Create an optimized version that calculates fewer pixels based on grid size
-function calculateOptimizedPixels(width: number, height: number): string[] {
-  // For large grids, we'll downsample for calculation and then expand
-  let calculationWidth = width;
-  let calculationHeight = height;
-  let skipFactor = 1;
-
-  // Calculate the scaling and offset factors
-  const scaleFactor = scaleValue.value / 100; // Convert percentage to factor (1.0 = 100%)
-
-  // Calculate colors for the optimized grid
-  const optimizedPixels: string[] = [];
-  for (let y = 0; y < calculationHeight; y++) {
-    for (let x = 0; x < calculationWidth; x++) {
-      // Translate back to original coordinates
-      const originalX = Math.min(x * skipFactor, width - 1);
-      const originalY = Math.min(y * skipFactor, height - 1);
-
-      // Apply scaling and offset to coordinates
-      // For scaling: center on grid, scale, then restore
-      // For offset: simply add the offset amount
-      const normalizedX = originalX / (width - 1); // 0-1 range
-      const normalizedY = originalY / (height - 1); // 0-1 range
-
-      // Center point for scaling
-      const centerXNorm = 0.5;
-      const centerYNorm = 0.5;
-
-      // Apply scaling around center
-      let scaledX = centerXNorm + (normalizedX - centerXNorm) / scaleFactor;
-      let scaledY = centerYNorm + (normalizedY - centerYNorm) / scaleFactor;
-
-      // Check if the scaled point is outside the valid range (0-1)
-      // If it is, we'll use the closest edge color
-      const isOutsideRange =
-        scaledX < 0 || scaledX > 1 || scaledY < 0 || scaledY > 1;
-
-      // Map back to pixel coordinates if in range
-      const mappedX = isOutsideRange
-        ? scaledX < 0
-          ? 0
-          : width - 1
-        : Math.min(Math.max(0, Math.round(scaledX * (width - 1))), width - 1);
-      const mappedY = isOutsideRange
-        ? scaledY < 0
-          ? 0
-          : height - 1
-        : Math.min(Math.max(0, Math.round(scaledY * (height - 1))), height - 1);
-
-      const cacheKey = `${gradientType.value}-${mappedX}-${mappedY}-${customAngle.value}-${centerX.value}-${centerY.value}-${ellipticalRotation.value}-${scaleValue.value}`;
-
-      const color = getColorFromCache(cacheKey, () => {
-        if (isOutsideRange) {
-          // For points outside the valid range, use edge coloring
-          if (gradientType.value === "linear") {
-            // For linear gradients, extrapolate the color based on angle
-            const angleRad = (customAngle.value * Math.PI) / 180;
-            const angleVector = [Math.cos(angleRad), Math.sin(angleRad)];
-            const position =
-              (scaledX * angleVector[0] + scaledY * angleVector[1]) * 100;
-            const adjustedPosition = Math.max(0, Math.min(100, position));
-            return getColorAtPosition(adjustedPosition);
-          } else {
-            // For radial/elliptical, use the furthest position (100%)
-            return getColorAtPosition(100);
-          }
-        }
-        if (gradientType.value === "linear") {
-          // Calculate position based on custom angle
-          const angleRad = (customAngle.value * Math.PI) / 180;
-          // Calculate dot product with angle vector
-          const angleVector = [Math.cos(angleRad), Math.sin(angleRad)];
-          const position =
-            (scaledX * angleVector[0] + scaledY * angleVector[1]) * 100;
-          // Ensure position is within 0-100 range
-          const adjustedPosition = Math.max(0, Math.min(100, position));
-          return getColorAtPosition(adjustedPosition);
-        }
-        if (
-          gradientType.value === "radial" ||
-          gradientType.value === "elliptical"
-        ) {
-          // Calculate center coordinates in normalized space
-          const centerXNorm = centerX.value / 100;
-          const centerYNorm = centerY.value / 100;
-          // Calculate distance from center in normalized space
-          let dx = scaledX - centerXNorm;
-          let dy = scaledY - centerYNorm;
-          // Apply aspect ratio correction for the rectangular grid
-          // Adjust based on width/height ratio
-          const aspectRatio = width / height;
-          dx = dx * aspectRatio;
-          // For elliptical gradients, apply rotation if needed
-          if (gradientType.value === "elliptical") {
-            // First apply rotation if needed
-            if (ellipticalRotation.value !== 0) {
-              const rotationRad = (ellipticalRotation.value * Math.PI) / 180;
-              const rotatedDx =
-                dx * Math.cos(rotationRad) - dy * Math.sin(rotationRad);
-              const rotatedDy =
-                dx * Math.sin(rotationRad) + dy * Math.cos(rotationRad);
-              dx = rotatedDx;
-              dy = rotatedDy;
-            }
-            // Then adjust aspect ratio for elliptical effect
-            dy = dy * 2; // Make y axis have twice the effect of x axis
-          }
-          // Calculate maximum possible distance based on the grid's aspect ratio
-          const maxDistanceX =
-            Math.max(centerXNorm, 1 - centerXNorm) * aspectRatio;
-          const maxDistanceY = Math.max(centerYNorm, 1 - centerYNorm);
-          const maxDistance = Math.sqrt(
-            maxDistanceX * maxDistanceX + maxDistanceY * maxDistanceY
-          );
-          // Calculate distance as a percentage of maximum possible distance
-          const distance = (Math.sqrt(dx * dx + dy * dy) / maxDistance) * 100;
-          return getColorAtPosition(Math.min(distance, 100));
-        }
-
-        // Default return value to ensure we always return a string
-        // This fixed the TypeScript error
-        return getColorAtPosition(0); // Default to the first color stop
-      });
-
-      optimizedPixels.push(color);
-    }
-  }
-
-  // If we didn't optimize, return the calculated pixels directly
-  if (skipFactor === 1) {
-    return optimizedPixels;
-  }
-
-  // Otherwise, expand the optimized pixels back to the original size
-  const fullPixels: string[] = [];
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      // Find the nearest calculated pixel
-      const optimizedX = Math.min(
-        Math.floor(x / skipFactor),
-        calculationWidth - 1
-      );
-      const optimizedY = Math.min(
-        Math.floor(y / skipFactor),
-        calculationHeight - 1
-      );
-      const index = optimizedY * calculationWidth + optimizedX;
-      fullPixels.push(optimizedPixels[index]);
-    }
-  }
-
-  return fullPixels;
-}
-
-const gradientPixels = computed(() => {
-  return calculateOptimizedPixels(props.gridWidth, props.gridHeight);
-});
-
-// Methods
-function getColorAtPosition(position: number): string {
-  const sorted = [...colorStops.value].sort((a, b) => a.position - b.position);
-
-  // Handle edge cases
-  if (position <= sorted[0].position) return sorted[0].color;
-  if (position >= sorted[sorted.length - 1].position)
-    return sorted[sorted.length - 1].color;
-
-  // Find the two colors to interpolate between
-  let startIndex = 0;
-  for (let i = 0; i < sorted.length - 1; i++) {
-    if (position >= sorted[i].position && position <= sorted[i + 1].position) {
-      startIndex = i;
-      break;
-    }
-  }
-
-  const start = sorted[startIndex];
-  const end = sorted[startIndex + 1];
-
-  // Calculate interpolation factor (0-1)
-  const factor = (position - start.position) / (end.position - start.position);
-
-  // Interpolate between colors
-  return interpolateColor(start.color, end.color, factor);
-}
-
-function interpolateColor(
-  color1: string,
-  color2: string,
-  factor: number
-): string {
-  // Parse colors
-  const r1 = parseInt(color1.substring(1, 3), 16);
-  const g1 = parseInt(color1.substring(3, 5), 16);
-  const b1 = parseInt(color1.substring(5, 7), 16);
-
-  const r2 = parseInt(color2.substring(1, 3), 16);
-  const g2 = parseInt(color2.substring(3, 5), 16);
-  const b2 = parseInt(color2.substring(5, 7), 16);
-
-  // Interpolate
-  const r = Math.round(r1 + factor * (r2 - r1));
-  const g = Math.round(g1 + factor * (g2 - g1));
-  const b = Math.round(b1 + factor * (b2 - b1));
-
-  // Convert back to hex
-  return `#${r.toString(16).padStart(2, "0")}${g
-    .toString(16)
-    .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
-}
+// Gradient pixel calculation lives in gradientRenderer.ts so useFrames can
+// regenerate frames at interpolated settings (rotation/scale/etc.) without
+// duplicating the math.
 
 function addColorStop() {
-  if (colorStops.value.length >= 4) return;
-
   // Find the largest gap between positions
   const sorted = [...colorStops.value].sort((a, b) => a.position - b.position);
   let maxGap = 0;
@@ -452,7 +232,7 @@ function addColorStop() {
 
   // Add a new stop with a default color in the middle of the largest gap
   colorStops.value.push({
-    color: interpolateColor(
+    color: mixHexRgb(
       sorted.find((s) => s.position < gapPos)?.color || "#000000",
       sorted.find((s) => s.position > gapPos)?.color || "#ffffff",
       0.5
@@ -478,25 +258,13 @@ function removeColorStop(index: number) {
 
 function updateStopColor(index: number, color: string) {
   colorStops.value[index].color = color;
-
-  // Clear color caches whenever color stops change
-  colorCache.clear();
-
   saveToLocalStorage();
-
-  // Trigger debounced update immediately for color changes
   applyGradient();
 }
 
 function updateStopPosition(index: number, position: number) {
   colorStops.value[index].position = Math.max(0, Math.min(100, position));
-
-  // Clear color caches whenever color stops change
-  colorCache.clear();
-
   saveToLocalStorage();
-
-  // Trigger debounced update immediately for position changes
   applyGradient();
 }
 
@@ -589,9 +357,7 @@ function updateScale(scale: number) {
 
 function resetTransform() {
   scaleValue.value = 100;
-
   saveToLocalStorage();
-  colorCache.clear();
   applyGradient();
 }
 
@@ -600,26 +366,41 @@ function toggleExpandedState() {
   expanded.value = !expanded.value;
 }
 
-// Keep track of pending updates to avoid excessive recalculations
-let isUpdatePending = false;
+// Set while we hydrate internal refs from props.initialSettings so the
+// watchers below don't fire applyGradient (which would emit back up and
+// loop, or worse, overwrite the active frame's source).
+const isHydrating = ref(false);
+
+function currentSource(): FrameSource {
+  return {
+    type: "gradient",
+    params: {
+      gradientType: gradientType.value,
+      customAngle: customAngle.value,
+      centerX: centerX.value,
+      centerY: centerY.value,
+      ellipticalRotation: ellipticalRotation.value,
+      scaleValue: scaleValue.value,
+      colorStops: colorStops.value.map((s) => ({ ...s })),
+    },
+  };
+}
 
 function applyGradient() {
-  const pixels = calculateOptimizedPixels(props.gridWidth, props.gridHeight);
-
-  // Use the provided function if available, otherwise do nothing
+  if (isHydrating.value) return;
+  const src = currentSource();
+  if (src.type !== "gradient") return;
+  const pixels = renderGradient(src.params, props.gridWidth, props.gridHeight);
   if (props.applyPixelArray) {
-    props.applyPixelArray(pixels);
+    props.applyPixelArray(pixels, src);
   }
 }
 
-// Set up watchers for changes in gradient type only - this needs immediate update
 watch(gradientType, () => {
-  // For type changes only, we'll update storage but debounce the pixel calculation
   saveToLocalStorage();
   applyGradient();
 });
 
-// For other parameters, use a separate watcher with higher debounce
 watch(
   [customAngle, centerX, centerY, ellipticalRotation],
   () => {
@@ -628,29 +409,38 @@ watch(
   },
   { flush: "post" }
 );
-// Add watch for colorStops to ensure updates
-watch(
-  colorStops,
-  () => {
-    // Clear caches and update when color stops change
-    colorCache.clear();
-    applyGradient();
-  },
-  { deep: true }
-);
 
-// Add watch for colorStops to ensure updates
 watch(
   colorStops,
   () => {
-    // Clear caches and update when color stops change
-    colorCache.clear();
     applyGradient();
   },
   { deep: true }
 );
 
 onMounted(() => loadFromLocalStorage());
+
+// Hydrate from the active-frame gradient settings when they change. Wrapped
+// in an isHydrating guard so the cascade of internal watchers (which call
+// applyGradient → applyPixelArray) doesn't fire while we're loading.
+watch(
+  () => props.initialSettings,
+  (s) => {
+    if (!s) return;
+    isHydrating.value = true;
+    gradientType.value = s.gradientType;
+    customAngle.value = s.customAngle;
+    centerX.value = s.centerX;
+    centerY.value = s.centerY;
+    ellipticalRotation.value = s.ellipticalRotation;
+    scaleValue.value = s.scaleValue;
+    colorStops.value = s.colorStops.map((stop) => ({ ...stop }));
+    queueMicrotask(() => {
+      isHydrating.value = false;
+    });
+  },
+  { deep: true }
+);
 </script>
 
 <style scoped>
@@ -723,9 +513,8 @@ onMounted(() => loadFromLocalStorage());
           >
           <button
             @click="addColorStop"
-            :disabled="colorStops.length >= 4"
-            class="p-1 text-blue-500 hover:text-blue-700 disabled:text-gray-400 disabled:cursor-not-allowed"
-            title="Add color stop (max 4)"
+            class="p-1 text-blue-500 hover:text-blue-700"
+            title="Add color stop"
           >
             <Plus class="w-4 h-4" />
           </button>
@@ -860,11 +649,41 @@ onMounted(() => loadFromLocalStorage());
           <div
             class="flex justify-between text-xs text-gray-500 dark:text-gray-400"
           >
-            <span>0° </span>
-            <span>90° </span>
-            <span>180° </span>
-            <span>270° </span>
-            <span>359°</span>
+            <button
+              type="button"
+              @click="updateCustomAngle(0)"
+              class="hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              0°
+            </button>
+            <button
+              type="button"
+              @click="updateCustomAngle(90)"
+              class="hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              90°
+            </button>
+            <button
+              type="button"
+              @click="updateCustomAngle(180)"
+              class="hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              180°
+            </button>
+            <button
+              type="button"
+              @click="updateCustomAngle(270)"
+              class="hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              270°
+            </button>
+            <button
+              type="button"
+              @click="updateCustomAngle(359)"
+              class="hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              359°
+            </button>
           </div>
         </div>
 
@@ -936,11 +755,41 @@ onMounted(() => loadFromLocalStorage());
           <div
             class="flex justify-between text-xs text-gray-500 dark:text-gray-400"
           >
-            <span>0°</span>
-            <span>90°</span>
-            <span>180°</span>
-            <span>270°</span>
-            <span>359°</span>
+            <button
+              type="button"
+              @click="updateEllipticalRotation(0)"
+              class="hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              0°
+            </button>
+            <button
+              type="button"
+              @click="updateEllipticalRotation(90)"
+              class="hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              90°
+            </button>
+            <button
+              type="button"
+              @click="updateEllipticalRotation(180)"
+              class="hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              180°
+            </button>
+            <button
+              type="button"
+              @click="updateEllipticalRotation(270)"
+              class="hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              270°
+            </button>
+            <button
+              type="button"
+              @click="updateEllipticalRotation(359)"
+              class="hover:text-gray-800 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              359°
+            </button>
           </div>
         </div>
 

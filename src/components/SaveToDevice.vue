@@ -2,16 +2,29 @@
 import { ref, watch, onBeforeUnmount, computed } from "vue";
 import { CloudUpload, X, Save, CheckCircle2, AlertCircle } from "lucide-vue-next";
 import { useWledGif } from "../composables/useWledGif";
+import type { Frame } from "../composables/useFrames";
 
 interface Props {
   apiUrl: string;
   pixelData: string[];
   gridWidth: number;
   gridHeight: number;
+  // Optional animation frames. When length >= 2, the save flow encodes an
+  // animated GIF using these frames instead of the single `pixelData` prop.
+  frames?: Frame[];
+  // Per-frame delay in 1/100 s (only used when `frames` has 2+ entries).
+  delayHundredths?: number;
   disabled?: boolean;
 }
 
-const props = withDefaults(defineProps<Props>(), { disabled: false });
+const props = withDefaults(defineProps<Props>(), {
+  disabled: false,
+  frames: () => [],
+  delayHundredths: 20,
+});
+
+// Will the next save produce an animated GIF?
+const isAnimated = computed(() => props.frames.length >= 2);
 
 const { busy, lastError, lastStatus, saveAndPlay, sanitizeFilename } =
   useWledGif();
@@ -19,7 +32,11 @@ const { busy, lastError, lastStatus, saveAndPlay, sanitizeFilename } =
 const isModalOpen = ref(false);
 const filename = ref("drawing");
 const presetId = ref(1);
-const presetName = ref("Drawing");
+const presetName = ref("drawing");
+// Once the user manually edits the preset name we stop mirroring `filename`
+// into it. Stays sticky for the session — if they reset it back to match,
+// they still keep manual control until reload.
+const presetNameDirty = ref(false);
 const segmentId = ref(0);
 const brightness = ref(230);
 const speed = ref(128);
@@ -31,9 +48,14 @@ const triggerRef = ref<HTMLButtonElement | null>(null);
 
 const previewName = computed(() => sanitizeFilename(filename.value));
 
-watch(filename, () => {
+watch(filename, (v) => {
   result.value = "";
+  if (!presetNameDirty.value) presetName.value = v;
 });
+
+function onPresetNameInput() {
+  presetNameDirty.value = true;
+}
 
 function openModal() {
   isModalOpen.value = true;
@@ -63,9 +85,14 @@ onBeforeUnmount(() => {
 
 async function onSave() {
   result.value = "";
+  // Animated path: send the array of frame pixelData + delay. Still path:
+  // send the canvas pixelData (today's behavior).
+  const pixels: string[] | string[][] = isAnimated.value
+    ? props.frames.map((f) => f.pixelData)
+    : props.pixelData;
   const r = await saveAndPlay(
     props.apiUrl,
-    props.pixelData,
+    pixels,
     props.gridWidth,
     props.gridHeight,
     {
@@ -75,7 +102,8 @@ async function onSave() {
       segmentId: segmentId.value,
       brightness: brightness.value,
       speed: speed.value,
-    }
+    },
+    { delayHundredths: props.delayHundredths }
   );
   result.value = r.ok ? "ok" : "err";
 }
@@ -133,6 +161,15 @@ async function onSave() {
             on/off transitions work, unlike raw-pixel presets. Requires WLED
             0.16+ on an ESP32 build with GIF support.
           </p>
+
+          <div
+            v-if="isAnimated"
+            class="text-xs rounded p-2 bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200"
+          >
+            Animation mode: will save an animated GIF with
+            <b>{{ frames.length }} frames</b>
+            at {{ Math.round(100 / delayHundredths) }} fps.
+          </div>
 
           <div class="space-y-2">
             <label
@@ -249,6 +286,7 @@ async function onSave() {
                   type="text"
                   id="preset-name"
                   v-model="presetName"
+                  @input="onPresetNameInput"
                   class="w-full py-1.5 px-2 text-sm border border-gray-300 rounded dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 />
               </div>

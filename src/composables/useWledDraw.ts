@@ -315,7 +315,10 @@ export function useWledDraw() {
   }
 
   // Apply an entire array of pixels (for gradients, images, etc.)
-  function applyPixelArray(newPixels: string[]): void {
+  function applyPixelArray(
+    newPixels: string[],
+    opts: { skipHistory?: boolean } = {}
+  ): void {
     // Ensure we have some pixels to apply
     if (!newPixels || newPixels.length === 0) {
       console.warn("Empty pixel array - nothing to apply");
@@ -353,11 +356,14 @@ export function useWledDraw() {
       newPixels = adaptedPixels;
     }
 
-    // Save current state to history
-    saveToHistory({
-      type: "clear",
-      pixels: [...pixelData.value],
-    });
+    // Save current state to history (unless caller opts out — e.g. frame
+    // switches are navigation, not edits, and should not be in undo).
+    if (!opts.skipHistory) {
+      saveToHistory({
+        type: "clear",
+        pixels: [...pixelData.value],
+      });
+    }
 
     // Update all pixels
     pixelData.value = [...newPixels];
@@ -366,6 +372,17 @@ export function useWledDraw() {
     // Save and schedule update
     saveToLocalStorage();
     debouncedSendToWled();
+  }
+
+  // Drop all pending undo entries. Used when switching frames so we don't
+  // pop entries logged against a different frame and corrupt its pixels.
+  function clearHistory(): void {
+    history.value = [];
+    try {
+      localStorage.drawHistory = JSON.stringify(history.value);
+    } catch (e) {
+      console.error("Failed to clear history in localStorage:", e);
+    }
   }
 
   // Send updates during active drawing with a short delay
@@ -651,6 +668,7 @@ export function useWledDraw() {
     sendDrawingUpdate, // Specific method for drawing updates
     flushChanges,
     undo,
+    clearHistory,
     clearScreen,
     ignoreApiAndContinue,
     setupGrid,

@@ -9,6 +9,7 @@ import {
   Copy,
   Check,
   Sun,
+  Film,
 } from "lucide-vue-next";
 import RangeSlider from "./RangeSlider.vue";
 
@@ -19,6 +20,7 @@ interface ToolbarProps {
   gridHeight: number;
   brushSize?: number;
   brightness?: number;
+  isAnimationModeOn?: boolean;
   wledJson?: string; // Add JSON prop
 }
 
@@ -27,6 +29,7 @@ const props = withDefaults(defineProps<ToolbarProps>(), {
   currentTool: "pen",
   brushSize: 1,
   brightness: 230,
+  isAnimationModeOn: false,
   wledJson: "", // Default for wledJson
 });
 
@@ -35,6 +38,7 @@ const emit = defineEmits<{
   "update:currentTool": [tool: string];
   "update:brushSize": [size: number];
   "update:brightness": [value: number];
+  "update:isAnimationModeOn": [value: boolean];
   undo: [];
   clear: [];
 }>();
@@ -257,6 +261,31 @@ onUnmounted(() => {
           class="absolute left-1/2 -bottom-8 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10"
         >
           Clear (Ctrl+Shift+C)
+        </span>
+      </button>
+    </div>
+
+    <!-- Separator -->
+    <div class="h-8 w-px bg-gray-300 dark:bg-gray-600 mx-2"></div>
+
+    <!-- Animation mode toggle — reveals the frame timeline below the canvas -->
+    <div class="flex gap-1 mx-2">
+      <button
+        @click="emit('update:isAnimationModeOn', !isAnimationModeOn)"
+        :class="{
+          'bg-blue-500 text-white': isAnimationModeOn,
+          'bg-white text-gray-700 dark:bg-gray-700 dark:text-gray-200':
+            !isAnimationModeOn,
+        }"
+        class="p-2 rounded-md transition-all duration-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 relative group"
+        :title="isAnimationModeOn ? 'Hide frame timeline' : 'Show frame timeline'"
+        :aria-pressed="isAnimationModeOn"
+      >
+        <Film class="w-5 h-5" />
+        <span
+          class="absolute left-1/2 -bottom-8 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10"
+        >
+          {{ isAnimationModeOn ? "Hide frames" : "Frames" }}
         </span>
       </button>
     </div>
